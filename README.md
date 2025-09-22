@@ -23,7 +23,7 @@
 | Verificar os detalhes de um DeamonSet | kubectl describe deamonsets NOME_DEAMONSET | -                                                                                                                                                                                                                                    |
 | Verificar o yaml de um POD | kubectl get POD_NAME -o yaml | -                                                                                                                                                                                                                                    |
 | Obter as informações de conexão de um node | kubectl get nodes -o wide | -                                                                                                                                                                                                                                    | 
-
+| Listar as prioridades de um node | kubectl get priorityclass | - |
 
 ## Scheduling & Workload Management
 ***
@@ -168,3 +168,38 @@ Quando um POD estático é criado ele é listado no comando kubectl get pods com
 Por padrão o manifesto para pods estáticos ficam no diretório /etc/kubernets/manifests. Porém para verificar é necessário checar o arquivo de configurações do kubet no node.
 
 /var/libe/kubelet/config.yaml
+
+
+## Priority Classe
+
+As priority classes ajudam a definir prioridades entre workloads. Para definir uma prioridade basta declarar via manifesto:
+Por defualt um POD sempre vai ter o valor de prioridade 0.
+```yaml
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: priority example
+value: 100000
+description: "Priority class for critical applications"
+```
+[Documentação Oficial](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/)
+
+
+## Multiples Schedulers
+
+Você pode escrever o prório scheduler, alterando o algoritimo para atender as suas necessidades. O kubernetes cluster pode ter vários scheduler ao mesmo tempo
+
+[Configurando múltiplos Schedulers](https://kubernetes.io/docs/tasks/extend-kubernetes/configure-multiple-schedulers/)
+
+
+## Admission Controllers
+
+Toda vez que inciamos um comando via kubeCTL basicamente passamos pelo o API Server que irár precisar mandar a request para o node, via kubelet, o kubelet precisa autenticar a requisição antes. A autenticação ocorre via certificado, o arquivo de configuração do kubet possuí o certificado. Após a autenticação é necessário autorizar a requisção (isso funciona através de Roles RBAC)
+
+
+O Admission COntrollers oferece uma granularidade melhor que o RBAC (funcionam como um Guardrail basicamente). Após autenticar e autorizar a Request o Admission COntroler faz algumas validações do comando para garantir a qualidade do cluster
+
+[Adimission COntrollers in K8s](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/)
+
+Validating Admission Controllers: APenas Valida
+Mutation Valaditation COntrolers: ALterar as ocnfigurações após recber e valdiar a request do kubelet
