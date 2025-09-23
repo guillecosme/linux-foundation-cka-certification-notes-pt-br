@@ -1,205 +1,446 @@
 
+# 📘 KCNA - Resumo Completo de Preparação
 
-# KCNA - Notas de Prpeparação da prova
+Este documento contém uma revisão detalhada dos principais tópicos cobrados no exame **KCNA (Kubernetes and Cloud Native Associate)**, com explicações, exemplos, comandos úteis e links para a documentação oficial.
 
+---
 
- Preciso revisar os módulos:
-  - IntroductioN
-  - Core concepts
-  - Scheduling
+## 1. 🔎 Core Concepts
 
-# Comandos úteis 
+### Pods
+- Unidade mínima de execução no Kubernetes.  
+- Pode conter **um ou mais containers** que compartilham:  
+  - Rede (IP, portas)  
+  - Volumes (armazenamento)  
 
-| Objetivo                                  | Comando          | Observações                                                                                                                                                                                                                          |
-|-------------------------------------------|------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Editar as configs de um POD em execução   | kubectl edit pod | Nem sempre é possível editar as configs de um pod em execução, caso surja o erro de Forbidden, uma cópia do manifesto que você alterou será criada na pasta /tmp. Com o arquivo em mãoes você pode deletar o pod e criá-lo novamente |
-| Deletar um POD em execução                | kvbectl delete pod <Nome do POD> | -                                                                                                                                                                                                                                    |
-| Cria um POD com base num arquiv YAML      | kubectl create -f /Path do YAML/NOME DO YAML.yml | -                                                                                                                                                                                                                                    |
-| Editar um DEPLOYMENT                      | kubectl edit deployment NOME_DEPLOYMENT | -                                                                                                                                                                                                                                    |
-| Inspecionar os logs de execução de um pod | kubectl logs NOME_POD | -                                                                                                                                                                                                                                    |
-| Verificar os dados de um POD              | kubectl describe POD_NAME | -                                                                                                                                                                                                                                    |
-| Criar um DeamonSet a partir de um arquivo | kubectl create -f deamon-set-definition.yml | -                                                                                                                                                                                                                                    |
-| Listar um DeamonSet                       | kubctl get deamonsets | -                                                                                                                                                                                                                                    |
-| Verificar os detalhes de um DeamonSet | kubectl describe deamonsets NOME_DEAMONSET | -                                                                                                                                                                                                                                    |
-| Verificar o yaml de um POD | kubectl get POD_NAME -o yaml | -                                                                                                                                                                                                                                    |
-| Obter as informações de conexão de um node | kubectl get nodes -o wide | -                                                                                                                                                                                                                                    | 
-| Listar as prioridades de um node | kubectl get priorityclass | - |
-
-## Scheduling & Workload Management
-***
-
-A capcidade de lançar pods em determinados nodes bseados em diferentes configurações
-
-
-### Resource limits
-
-Cpaz de fazer o processo de scheduling baseado em:
-
-Quem comanda o processo é o kube-scheduler
-
-- CPU
--  Memory
-
-Isso pode ser feito no manifesto do pod através da sessão de "RESOURCES"
-
-```yaml
-resources:
-  requests:
-    memory: "4Gi"
-    cpu: 2
-```
-é possível também configurar o máximo de memória que um Container de um pode pode utilizar a través da especificação  do do pod:
-
-
-```yaml
-resources:
-  requests:
-    memory: "4Gi"
-      cpu: 2
-  limits:
-    memory: "4Gi"
-    cpu: 2
+**Comandos úteis:**
+```bash
+kubectl run nginx --image=nginx
+kubectl get pods
+kubectl describe pod <NOME>
 ```
 
-Um container não pode usar mais CPU do que o definido no limite, caso ele tente utilizar CPU ele será deletado.
-O contrário já não é uma verdade, quando se trata de memória o container pode ultrapassar o limite, mas ele tentará ser alocado em outro node com o erro OOM -> Out of Memory Error
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/workloads/pods/)
 
-Por default qualquer pod pode utilizar o máximo de memória e cpu que conseguir, só é repsieto limites se os limites forem declarados no manifesto do pod.
+---
 
-Requests =  Mínimo desejável
-Limits = Máximo desejável
+### ReplicaSets
+- Garante que o número desejado de **réplicas de Pods** esteja sempre em execução.  
+- Substituído na prática por **Deployments**.  
 
-Vocẽ pode estar s eperguntando, mas se o default é não ter limits ou requests a não ser que você declare isso no manifesto, como então garantir que haja um comportamento padrão entre todos os pods?
-
-Você utilizar o LImitRange no manifesto do seu Pod:
-
-Especificação de CPU:
-
+**Exemplo YAML:**
 ```yaml
-apiVersion: v1
-kind: LimitRange
-metadata: cpu-resource-constraint
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: my-replicaset
 spec:
-  limits:
-    - default:
-        cpu: 500m
-      defaultRequest:
-        cpu: 500m
-      max:
-        cpu: "1"
-      min:
-        cpu: 100m
-      type: Container
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
 ```
-Especificação de memória:
 
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/)
+
+---
+
+### Deployments
+- Controla ReplicaSets.  
+- Permite **rollouts** (atualizações) e **rollbacks**.  
+
+**Comandos úteis:**
+```bash
+kubectl create deployment nginx --image=nginx
+kubectl get deployments
+kubectl rollout status deployment/nginx
+kubectl rollout history deployment/nginx
+kubectl rollout undo deployment/nginx
+```
+
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
+
+---
+
+### Services
+- Abstração de rede que expõe Pods.  
+- Tipos principais:  
+  - **ClusterIP** (interno, padrão)  
+  - **NodePort** (exposição em portas do Node)  
+  - **LoadBalancer** (integra com nuvem)  
+
+**Comandos úteis:**
+```bash
+kubectl expose deployment nginx --port=80 --target-port=80 --type=ClusterIP
+kubectl expose deployment nginx --type=NodePort --port=80
+kubectl get svc
+```
+
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/services-networking/service/)
+
+---
+
+### Namespaces
+- Isolam recursos dentro de um cluster.  
+- Muito usados em multi-tenant clusters.  
+
+**Comandos úteis:**
+```bash
+kubectl get namespaces
+kubectl create namespace dev
+kubectl get pods -n dev
+```
+
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/)
+
+---
+
+### ConfigMaps e Secrets
+- **ConfigMaps**: armazenam configurações não sensíveis.  
+- **Secrets**: armazenam informações sensíveis (base64).  
+
+**Comandos úteis:**
+```bash
+kubectl create configmap app-config --from-literal=ENV=prod
+kubectl get configmap app-config -o yaml
+
+kubectl create secret generic db-secret --from-literal=PASSWORD=12345
+kubectl get secret db-secret -o yaml
+```
+
+👉 [ConfigMaps](https://kubernetes.io/docs/concepts/configuration/configmap/)  
+👉 [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/)
+
+---
+
+## 2. ⚖️ Scheduling & Workload Management
+
+### Requests e Limits
+- **Requests**: recursos mínimos garantidos.  
+- **Limits**: máximo permitido.  
+
+**Exemplo YAML:**
+```yaml
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "500m"
+  limits:
+    memory: "1Gi"
+    cpu: "1"
+```
+
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)
+
+---
+
+### LimitRange
+Define valores padrões e limites mínimos/máximos.  
+
+**Exemplo:**
 ```yaml
 apiVersion: v1
 kind: LimitRange
-metadata: cpu-resource-constraint
+metadata:
+  name: cpu-limit-range
 spec:
   limits:
   - default:
       cpu: 500m
     defaultRequest:
-      memory: 1Gi
+      cpu: 200m
     max:
-      memory: 1Gi
+      cpu: "1"
     min:
-      memory: 500Mi
+      cpu: 100m
     type: Container
 ```
 
-Também é possível estabelecer um quaota máxima de recurusos que os containers podem usar utilizando o Resources Quotas e aplicar no nível do NameSpace:
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/policy/limit-range/)
 
+---
+
+### ResourceQuota
+Limita os recursos **totais do namespace**.  
+
+**Exemplo:**
 ```yaml
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: my-resource-quota
+  name: compute-resources
 spec:
   hard:
-    requests.cpu: 4
-    request.memory: 4Gi
-    limits.cpu: 10
-    limits.memory: 10Gi
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.cpu: "2"
+    limits.memory: 2Gi
 ```
 
-### DeamonSets
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/policy/resource-quotas/)
 
-Assim como as ReplicasSets e Dployments o DeamonSet ajuda na escalabilidade e gerenciamento do ambeiente, ele basicamente garante que uma cópia de um determinado POD esteja sempre presente em todos os Nodes de um determinado namespace. Ele é muito útil em cenários de monitoring e agentes, onde você precisa de um agente de monitoria em todos os Nodes
+---
 
-Exemplos:
- - Calico
- - kube-proxy
+### DaemonSets
+- Garante **1 Pod por Node**.  
+- Usado para monitoramento, CNI, proxies.  
 
-Como declarar um DaemonSet:
-
-```yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: monitoring-example
-spec:
-  selector:
-    matchLabels:
-      app: monitoring-example
-  template:
-    metadata:
-      labels:
-        app: monitoring-example
-    spec:
-      containers:
-        - name: monitoring-example
-          image: monitoring-example
+**Comandos úteis:**
+```bash
+kubectl get daemonsets
+kubectl describe daemonset <NOME>
 ```
+
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/)
+
+---
 
 ### Static Pods
+- Gerenciados diretamente pelo **kubelet**.  
+- Manifestos em `/etc/kubernetes/manifests/`.  
 
-O kubelet é basicamente o capitão do Node, ele depende do Master Node  e seus componentes (kube-api, server, Control Manager, Scheduler e etcd) para coneguir gerenciar os pods do Node, porém se perdermos a função do master node o kubelet consegue gerenciar o node de maneira independente utilizando o Container Run Engine (containerD, Docker, rkt), você pode configurar o kubelet para ler as configurações de um pod em um servidor ou diretório externo sem dependencia do Master Node.
-Esse mecanismo só pode ser feito com pods, não funciona com Replicasets, Deployments ou DaemonSets.
+👉 [Documentação oficial](https://kubernetes.io/docs/tasks/configure-pod-container/static-pod/)
 
-[Criando um Static Pod >> Doc Oficial](https://kubernetes.io/docs/tasks/configure-pod-container/static-pod/)
+---
 
-Pra configurar você precisa alterar o arquivo de configuração do kublet no node, onde você aponta o novo caminho dos manifestos do pod direto no arquivo de configuração.
+### PriorityClasses
+- Define prioridade para Pods.  
+- Pods de menor prioridade podem ser **preemptados**.  
 
-Quando um POD estático é criado ele é listado no comando kubectl get pods com pelo nome + sufixo  do nome do nome
-
-Por padrão o manifesto para pods estáticos ficam no diretório /etc/kubernets/manifests. Porém para verificar é necessário checar o arquivo de configurações do kubet no node.
-
-/var/libe/kubelet/config.yaml
-
-
-## Priority Classe
-
-As priority classes ajudam a definir prioridades entre workloads. Para definir uma prioridade basta declarar via manifesto:
-Por defualt um POD sempre vai ter o valor de prioridade 0.
+**Exemplo:**
 ```yaml
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: priority example
+  name: high-priority
 value: 100000
-description: "Priority class for critical applications"
+globalDefault: false
+description: "High priority pods"
 ```
-[Documentação Oficial](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/)
+
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/)
+
+---
+
+### Admission Controllers
+- Validam ou modificam requests para o API Server.  
+- Tipos:  
+  - **ValidatingWebhook** (somente valida)  
+  - **MutatingWebhook** (pode alterar objetos)  
+
+👉 [Documentação oficial](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/)
+
+---
+
+## 3. 📊 Escalabilidade
+
+### Horizontal Pod Autoscaler (HPA)
+- Escala **horizontalmente** (réplicas de Pods).  
+- Baseado em métricas (CPU, memória ou customizadas).  
+
+**Exemplo:**
+```bash
+kubectl autoscale deployment nginx --cpu-percent=50 --min=1 --max=5
+```
+
+👉 [Documentação oficial](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
+
+---
+
+### Vertical Pod Autoscaler (VPA)
+- Ajusta automaticamente requests/limits de CPU e memória.  
+- Melhor para workloads **estáveis**.  
+
+👉 [Documentação oficial](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler)
+
+---
+
+## 4. 🔎 Monitoring
+
+### Metrics Server
+- Agrega métricas de recursos de Pods e Nodes.  
+
+**Comandos úteis:**
+```bash
+kubectl top nodes
+kubectl top pods
+```
+
+👉 [Documentação oficial](https://github.com/kubernetes-sigs/metrics-server)
+
+---
+
+## 5. 🔄 Application Lifecycle Management
+
+- **Rolling Update** (padrão) e **Recreate**.  
+- **Rollback** possível com `kubectl rollout undo`.  
+- **ConfigMaps & Secrets** permitem externalizar configs.  
+- **Multi-Container Pods**:  
+  - Init Containers  
+  - Sidecars  
+
+👉 [Documentação oficial](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy)
+
+---
+
+## 6. Cluster Maintenece
+
+### 6.1. Atualização de Clusters
+- **Objetivo:** Garantir que os componentes do cluster estejam atualizados com versões suportadas.
+- **Ferramentas comuns:**
+    - `kubeadm upgrade`
+    - Gerenciadores de cluster (GKE, EKS, AKS → upgrades automatizados).
+- **Passos típicos em clusters `kubeadm`:**
+    1. Planejar a atualização:
+       ```bash
+       kubeadm upgrade plan
+       ```
+    2. Atualizar o plano de controle:
+       ```bash
+       sudo kubeadm upgrade apply v1.30.0
+       ```
+    3. Atualizar o `kubelet` em cada nó:
+       ```bash
+       sudo apt-get install -y kubelet=1.30.0-00
+       sudo systemctl restart kubelet
+       ```
+- Documentação: [Upgrading kubeadm clusters](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-upgrade/)
+
+---
+
+### 6.2. Manutenção de Nós
+- **Cordoning (isolamento):** Evita que novos Pods sejam agendados em um nó.
+  ```bash
+  kubectl cordon <node-name>
+  ```
+- **Draining (remoção controlada):** Remove Pods em execução de forma segura.
+  ```bash
+  kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+  ```
+- **Uncordoning (reabilitar agendamento):**
+  ```bash
+  kubectl uncordon <node-name>
+  ```
+
+**Exemplo prático:**
+```bash
+# Preparar o nó para manutenção
+kubectl cordon worker-1
+
+# Mover os pods de forma segura
+kubectl drain worker-1 --ignore-daemonsets
+
+# Após manutenção, reabilitar
+kubectl uncordon worker-1
+```
+
+---
+
+### 6.3. Logs e Monitoramento de Componentes
+- **Verificar estado dos componentes:**
+  ```bash
+  kubectl get componentstatuses
+  ```
+- **Logs do kubelet (no host):**
+  ```bash
+  journalctl -u kubelet -f
+  ```
+- **Logs de Pods de sistema (exemplo: etcd):**
+  ```bash
+  kubectl -n kube-system logs etcd-master
+  ```
+
+Documentação: [Troubleshooting Clusters](https://kubernetes.io/docs/tasks/debug/)
+
+---
+
+### 6.4. Backup e Restore do etcd
+- O **etcd** é o banco de dados chave/valor que armazena o estado do cluster.
+- Fazer backup regular é crítico para recuperação de desastre.
+
+**Backup do etcd:**
+```bash
+ETCDCTL_API=3 etcdctl   --endpoints=https://127.0.0.1:2379   --cacert=/etc/kubernetes/pki/etcd/ca.crt   --cert=/etc/kubernetes/pki/etcd/server.crt   --key=/etc/kubernetes/pki/etcd/server.key   snapshot save /var/lib/etcd/backup.db
+```
+
+**Restore do etcd:**
+```bash
+ETCDCTL_API=3 etcdctl snapshot restore /var/lib/etcd/backup.db   --data-dir=/var/lib/etcd-from-backup
+```
+
+Documentação: [Operating etcd](https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/)
+
+---
+
+### 6.5. Troubleshooting Comum
+- **Nó NotReady:**
+    - Checar `kubelet` logs.
+    - Validar comunicação com API Server.
+- **Pods presos em Terminating:**
+  ```bash
+  kubectl delete pod <pod-name> --force --grace-period=0
+  ```
+- **Erro no etcd:**
+    - Validar espaço em disco.
+    - Restaurar de snapshot, se necessário.
+
+---
+
+## 📊 Tabela de Comandos Úteis de Manutenção
+
+| Tarefa                                          | Comando                                                                 |
+|-------------------------------------------------|-------------------------------------------------------------------------|
+| Planejar upgrade kubeadm                        | `kubeadm upgrade plan`                                                  |
+| Aplicar upgrade do cluster                      | `kubeadm upgrade apply vX.Y.Z`                                          |
+| Cordon de nó  (Deixar o Node fora do scheduler) | `kubectl cordon <node>`                                                 |
+| Drain de nó                                     | `kubectl drain <node> --ignore-daemonsets --delete-emptydir-data`       |
+| Uncordon de nó                                  | `kubectl uncordon <node>`                                               |
+| Verificar componentes                           | `kubectl get componentstatuses`                                         |
+| Logs do kubelet                                 | `journalctl -u kubelet -f`                                              |
+| Backup etcd                                     | `etcdctl snapshot save backup.db`                                       |
+| Restore etcd                                    | `etcdctl snapshot restore backup.db --data-dir=/var/lib/etcd-from-backup` |
+| Verificar estado dos nós                        | `kubectl get nodes -o wide`                                             |
+| Checar pods em kube-system                      | `kubectl get pods -n kube-system -o wide`                               |
+
+---
+
+## ✅ Resumo
+- Mantenha sempre **backups atualizados do etcd**.
+- Use `cordon/drain/uncordon` para manutenções seguras.
+- Sempre **planeje upgrades** (`kubeadm upgrade plan`).
+- Domine **logs e troubleshooting** de componentes críticos (`kubelet`, `etcd`, `apiserver`).
+
+---
 
 
-## Multiples Schedulers
+##  🛠️ Tabela de Comandos Úteis
 
-Você pode escrever o prório scheduler, alterando o algoritimo para atender as suas necessidades. O kubernetes cluster pode ter vários scheduler ao mesmo tempo
+| Objetivo                               | Comando                                         |
+|----------------------------------------|-------------------------------------------------|
+| Criar recurso a partir de YAML         | `kubectl create -f arquivo.yaml`                |
+| Editar Pod                             | `kubectl edit pod <NOME>`                       |
+| Deletar Pod                            | `kubectl delete pod <NOME>`                     |
+| Criar Deployment                       | `kubectl create deployment nginx --image=nginx` |
+| Editar Deployment                      | `kubectl edit deployment <NOME>`                |
+| Escalar Deployment                     | `kubectl scale deployment <NOME> --replicas=3`  |
+| Atualizar imagem em Deployment         | `kubectl set image deployment/nginx nginx=img:v2` |
+| Ver status de rollout                  | `kubectl rollout status deployment/nginx`       |
+| Rollback de rollout                    | `kubectl rollout undo deployment/nginx`         |
+| Logs de Pod                            | `kubectl logs <POD>`                            |
+| Logs de Pod (multi-container)          | `kubectl logs <POD> -c <CONTAINER>`             |
+| Métricas de Pods                       | `kubectl top pods`                              |
+| Métricas de Nodes                      | `kubectl top nodes`                             |
+| Expor serviço                          | `kubectl expose deployment nginx --port=80`     |
 
-[Configurando múltiplos Schedulers](https://kubernetes.io/docs/tasks/extend-kubernetes/configure-multiple-schedulers/)
+---
 
 
-## Admission Controllers
 
-Toda vez que inciamos um comando via kubeCTL basicamente passamos pelo o API Server que irár precisar mandar a request para o node, via kubelet, o kubelet precisa autenticar a requisição antes. A autenticação ocorre via certificado, o arquivo de configuração do kubet possuí o certificado. Após a autenticação é necessário autorizar a requisção (isso funciona através de Roles RBAC)
-
-
-O Admission COntrollers oferece uma granularidade melhor que o RBAC (funcionam como um Guardrail basicamente). Após autenticar e autorizar a Request o Admission COntroler faz algumas validações do comando para garantir a qualidade do cluster
-
-[Adimission COntrollers in K8s](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/)
-
-Validating Admission Controllers: APenas Valida
-Mutation Valaditation COntrolers: ALterar as ocnfigurações após recber e valdiar a request do kubelet
