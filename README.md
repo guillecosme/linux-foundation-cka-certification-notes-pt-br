@@ -1,5 +1,5 @@
 
-# 📘 KCNA - Resumo Completo de Preparação
+# 📘 CKA - Resumo Completo de Preparação
 
 Este documento contém uma revisão detalhada dos principais tópicos cobrados no exame **KCNA (Kubernetes and Cloud Native Associate)**, com explicações, exemplos, comandos úteis e links para a documentação oficial.
 
