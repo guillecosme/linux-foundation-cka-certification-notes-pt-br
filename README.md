@@ -1400,3 +1400,549 @@ kubens secure-apps
 
 ---
 
+
+
+## 🗂️ 9. Storage (Introdução de Storage no Linux)
+
+No Linux, o **storage** é organizado em um sistema de arquivos hierárquico, onde tudo é tratado como arquivo ou diretório, incluindo dispositivos de armazenamento. Os dispositivos são montados em pontos de montagem (mount points) para ficarem acessíveis no sistema. O kernel gerencia drivers de dispositivos de bloco (block devices), que são usados para armazenar dados de maneira persistente. Partições podem ser criadas para organizar discos, e sistemas de arquivos como **ext4, XFS** são comuns em ambientes Linux. É importante entender permissões, inodes e links simbólicos para administração de volumes. Além disso, conceitos como **LVM (Logical Volume Manager)** permitem flexibilidade para redimensionamento e gerenciamento de discos. Em containers, o sistema de arquivos base do host é frequentemente usado como camada de persistência.
+
+**Exemplo:**
+```bash
+# Listar dispositivos de bloco
+lsblk
+
+# Montar manualmente um disco
+mount /dev/sdb1 /mnt/data
+
+# Ver espaço em disco
+df -h
+```
+
+**Referências:**
+- [Filesystem Hierarchy Standard](https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html)
+- [Linux Storage Administration](https://tldp.org/HOWTO/LVM-HOWTO/)
+
+---
+
+## 9.1 🐳 Storage no Docker
+
+O Docker utiliza um sistema de **layers** para armazenar imagens e contêineres. Por padrão, o armazenamento é feito em `/var/lib/docker`. Cada contêiner possui um sistema de arquivos baseado em camadas copy-on-write (CoW). Para persistir dados além do ciclo de vida do contêiner, o Docker permite o uso de **volumes** e **bind mounts**. Volumes são gerenciados pelo Docker e ficam armazenados no host, enquanto bind mounts mapeiam diretórios do host diretamente no contêiner. Volumes são mais recomendados para ambientes de produção, pois são mais portáveis e independentes da estrutura de diretórios do host.
+
+**Exemplo:**
+```bash
+# Criar volume
+docker volume create meu_volume
+
+# Rodar contêiner com volume
+docker run -d -v meu_volume:/app/data nginx
+
+# Ver detalhes dos volumes
+docker volume inspect meu_volume
+```
+
+**Referências:**
+- [Docker Storage Overview](https://docs.docker.com/storage/)
+- [Docker Volumes](https://docs.docker.com/storage/volumes/)
+
+---
+
+## 9.2 🔌 Volume Driver Plugin no Docker
+
+O Docker suporta **plugins de volume** para conectar contêineres a sistemas de armazenamento externos como NFS, Ceph, EBS, ou outros provedores de cloud. Drivers podem ser instalados para habilitar funcionalidades avançadas como snapshot, replicação ou criptografia. Ao criar volumes com drivers específicos, é possível integrar com sistemas de storage corporativos ou cloud providers. É importante passar opções de configuração no momento da criação do volume para customizar o comportamento do driver.
+
+**Exemplo:**
+```bash
+# Criar volume usando driver nfs
+docker volume create   --driver local   --opt type=nfs   --opt o=addr=192.168.1.100,rw   --opt device=:/path/to/dir   meu_nfs_volume
+```
+
+**Referências:**
+- [Docker Volume Plugins](https://docs.docker.com/engine/extend/legacy_plugins/)
+
+---
+
+## 9.3 🧩 Container Storage Interface (CSI)
+
+O **Container Storage Interface (CSI)** é um padrão que permite que qualquer provedor de armazenamento crie plugins para Kubernetes de forma padronizada. Antes do CSI, existiam drivers embutidos no Kubernetes, o que dificultava a manutenção e evolução. Com o CSI, o Kubernetes se torna independente do ciclo de desenvolvimento de cada provedor de storage. Drivers CSI são instalados como DaemonSets e controlam a criação, montagem e desmontagem de volumes. Isso permite suporte a soluções como EBS, GCP PD, Ceph, entre outros.
+
+**Exemplo Manifesto CSI (trecho):**
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: ebs.csi.aws.com
+spec:
+  attachRequired: true
+```
+
+**Referências:**
+- [Kubernetes CSI Docs](https://kubernetes.io/docs/concepts/storage/volumes/#csi)
+- [CSI Spec](https://github.com/container-storage-interface/spec)
+
+---
+
+## 📦 Volumes
+
+Volumes no Kubernetes são recursos que permitem persistir dados além do ciclo de vida de um pod. Eles são montados nos contêineres e podem ser de tipos diferentes: `emptyDir` (temporário), `hostPath` (diretório do host), `nfs`, `configMap`, `secret`, `persistentVolumeClaim` entre outros. A principal vantagem é que os volumes sobrevivem a reinicializações de contêineres dentro do mesmo pod.
+
+**Exemplo:**
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-com-volume
+spec:
+  containers:
+    - name: app
+      image: nginx
+      volumeMounts:
+        - name: meu-volume
+          mountPath: /usr/share/nginx/html
+  volumes:
+    - name: meu-volume
+      emptyDir: {}
+```
+
+**Referências:**
+- [Kubernetes Volumes](https://kubernetes.io/docs/concepts/storage/volumes/)
+
+---
+
+## 9.4 🗄️ Persistent Volumes (PV)
+
+Um **Persistent Volume (PV)** é um recurso do cluster que representa um pedaço de armazenamento físico ou lógico provisionado. PVs são independentes do ciclo de vida de pods e são definidos pelo administrador ou provisionados dinamicamente. Podem usar diversos backends como NFS, iSCSI, AWS EBS, Azure Disk, etc. PVs têm um ciclo de vida próprio e podem ter políticas de `Retain`, `Delete` ou `Recycle`. Eles são fundamentais para ambientes produtivos onde dados não podem ser perdidos.
+
+**Exemplo PV:**
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-nfs
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    path: /exports/data
+    server: 192.168.1.100
+  persistentVolumeReclaimPolicy: Retain
+```
+
+**Referências:**
+- [Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
+
+---
+
+## 9.5 📜 Persistent Volume Claims (PVC)
+
+Um **Persistent Volume Claim (PVC)** é uma solicitação feita por um usuário para consumir armazenamento de um PV. Ele especifica o tamanho e o modo de acesso desejado. O Kubernetes tenta ligar (bind) o PVC a um PV compatível. A diferença chave é que **PV é o recurso físico ou lógico**, enquanto **PVC é o pedido de uso**. Se não houver PV adequado, o PVC fica em estado "Pending" até que um volume compatível seja disponibilizado.
+
+**Exemplo PVC:**
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-nfs
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+**Referências:**
+- [Persistent Volume Claims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims)
+
+---
+
+## 9.6 📂 Using PVCs in Pods
+
+Para usar um PVC em um Pod, basta referenciá-lo dentro da seção `volumes`. Assim, o Kubernetes garante que o volume solicitado será montado no contêiner. Isso desacopla o pod do detalhe do backend de armazenamento, permitindo maior portabilidade e abstração.
+
+**Exemplo Pod usando PVC:**
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-com-pvc
+spec:
+  containers:
+    - name: app
+      image: nginx
+      volumeMounts:
+        - name: dados
+          mountPath: /usr/share/nginx/html
+  volumes:
+    - name: dados
+      persistentVolumeClaim:
+        claimName: pvc-nfs
+```
+
+**Referências:**
+- [Using Persistent Volume Claims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#claims-as-volumes)
+
+---
+
+## 9.7 🏷️ Storage Class
+
+Um **StorageClass** define **como volumes são provisionados dinamicamente** no Kubernetes. Ele especifica o provisionador (driver CSI ou in-tree), parâmetros de configuração e política de `reclaim`. Cada PVC pode pedir uma StorageClass específica para provisionamento automático de PVs. Sem uma StorageClass definida, os PVCs precisam de PVs pré-criados manualmente.
+
+**Exemplo StorageClass:**
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-rapido
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: gp2
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+```
+
+---
+
+
+
+## 10. Networking no Docker
+- O Docker cria por padrão a **bridge `docker0`**, conectando containers a uma sub-rede privada com **NAT** para saída via host.
+- **Redes bridge definidas pelo usuário** oferecem isolamento e DNS embutido entre containers na mesma rede (melhor do que a bridge padrão).
+- **`-p/--publish`** mapeia portas do container para o host (ex.: `-p 8080:80`), diferente do modelo do Kubernetes onde o **Pod tem IP roteável no cluster**.
+- Modos **`host`** (container compartilha a stack de rede do host) e **`none`** (sem interface) existem, mas têm pouco uso em produção moderna com orquestradores.
+- Em contextos de orquestração (Swarm), redes **overlay (VXLAN)** conectam nós distintos; no K8s, isso é delegado a um **CNI plugin**, não ao Docker.
+- O isolamento se dá via **namespaces** e **veth pairs**; o tráfego de saída usa **iptables (MASQUERADE)** para NAT.
+- O DNS entre containers numa bridge usa o **embedded DNS** do Docker; no K8s, o DNS é provido por **CoreDNS**.
+- **Papel no K8s**: Kubernetes não usa “Docker networking” diretamente; o kubelet invoca **CNI** para configurar a rede do **Pod**.
+- Cuidado: publicar portas via Docker **não equivale** a expor workloads no K8s (lá usamos **Service/Ingress/Gateway**).
+- Diagnóstico: `docker network inspect`, `ip addr`, `iptables -t nat -S` ajudam a entender fluxo e NAT do host.
+- Para estudo: compare **bridge+NAT** (Docker) vs **IP por Pod e roteamento** (K8s/CNI).
+- Em ambientes modernos, **container runtime ≠ plano de rede**: o runtime executa containers, o **CNI configura rede**.
+
+**🔧 Exemplos rápidos (paralelos no K8s):**
+```bash
+# Docker – redes
+docker network ls
+docker network inspect bridge
+docker run --rm --network bridge -p 8080:80 nginx:alpine
+
+# Kubernetes – "equivalente" conceitual: Pod com hostNetwork
+kubectl run hostnet --image=nginx:alpine --overrides='{"spec":{"hostNetwork":true}}'
+kubectl get pod -o wide hostnet
+```
+
+> **⚖️ Diferenças-chave**: Docker publica portas no host; **K8s** usa **Service (ClusterIP/NodePort/LoadBalancer)** e **Ingress/Gateway** para entrada. DNS no Docker vem do engine; no K8s, **CoreDNS** e **Service discovery**.
+
+**📚 Referências:**
+- Kubernetes – [Networking (Visão Geral)](https://kubernetes.io/docs/concepts/services-networking/)
+- Kubernetes – [Container Runtimes](https://kubernetes.io/docs/setup/production-environment/container-runtimes/)
+- Docker – [Networking Overview](https://docs.docker.com/network/)
+
+---
+
+## 10.1 Pod Networking (Modelo IP-per-Pod)
+- **Cada Pod recebe seu próprio IP** e todas as containers do Pod compartilham **o mesmo namespace de rede** (lo, interfaces, portas).
+- Premissa do K8s: **todos os Pods podem se comunicar sem NAT** (pod-to-pod) e com **qualquer Node** do cluster.
+- A implementação concreta desse roteamento vem do **CNI plugin** (Calico, Cilium, Flannel, etc.) – Kubernetes define o **modelo**, não a tecnologia.
+- **Pod IP é efêmero**: reinícios/realocação podem mudar IP; por isso, a comunicação estável usa **Services**.
+- **kube-proxy** programa regras (iptables/ipvs) para **Service VIPs** apontarem para **Endpoints/EndpointSlices** dos Pods.
+- **Node IP ≠ Pod IP**: tráfego pod↔externo pode passar por NAT/masquerade, conforme política do CNI e rota de saída.
+- **hostNetwork: true** faz o Pod compartilhar a rede do Node (ganha performance, perde isolamento/porta única por host).
+- **NetworkPolicy** controla tráfego L3/L4 entre Pods/Namespaces (necessita CNI compatível); por padrão, tudo é **permitido**.
+- **Service types** (ClusterIP/NodePort/LoadBalancer) resolvem exposição interna/externa; **Ingress/Gateway** lida com L7 (HTTP).
+- Em **dual-stack**, Pod/Service podem ter **IPv4+IPv6**; requer configuração do cluster e do CNI.
+- Diagnóstico frequente: `kubectl exec` para `ping`, `curl`, `dig` dentro de Pods de teste.
+- Performance/latência dependem do modo (overlay, eBPF, roteamento BGP, ipvs, etc.) provido pelo CNI.
+
+**🔧 Exemplos (comandos úteis):**
+```bash
+kubectl get pods -o wide -A
+kubectl run netshoot --image=nicolaka/netshoot -it --rm -- bash
+# Dentro do netshoot:
+ip addr && ip route && ss -lntp
+# Testes:
+curl -I http://my-svc.my-ns.svc.cluster.local
+```
+
+**⚖️ Diferenças importantes:**
+- **Pod vs Container**: Pod é a **unidade de rede/implantação**; containers dentro dele compartilham IP/portas.
+- **Pod IP vs Service IP**: Pod IP muda; Service IP é **estável** para descoberta e balanceamento.
+
+**📚 Referências:**
+- Kubernetes – [Cluster Networking](https://kubernetes.io/docs/concepts/cluster-administration/networking/)
+- Kubernetes – [Pods](https://kubernetes.io/docs/concepts/workloads/pods/)
+- Kubernetes – [Services](https://kubernetes.io/docs/concepts/services-networking/service/)
+
+---
+
+## 10.2 CNI no Kubernetes
+- **CNI (Container Network Interface)** é uma especificação/contrato: o kubelet chama **plugins** para **ADD/DEL** interfaces ao ciclo de vida do Pod.
+- Os **binários** dos plugins ficam em `/opt/cni/bin` e as **configs** em `/etc/cni/net.d/` (ordem lexicográfica define qual usar).
+- Plugins populares: **Calico** (BGP/roteado), **Cilium** (eBPF), **Flannel** (VXLAN), **Weave Net**; há também **Multus** (múltiplas interfaces).
+- Fluxo típico: criar **veth pair**, anexar ao namespace do Pod, configurar **IPAM**, rotas, e políticas (quando suportadas).
+- **CNI chaining** permite encadear plugins (ex.: uma interface principal + policy plugin).
+- **Kubenet** é legado e limitado; **use um CNI completo** para NetworkPolicy e recursos avançados.
+- O **kubelet** não implementa rede; ele **invoca** o CNI e falha a criação do Pod se a configuração for inválida.
+- Log e troubleshooting: ver logs do CNI (systemd, `/var/log/…`), checar **Node routes**, `ip a`, `ip r`, `tc`, `bpftool` (Cilium).
+- Escolha de CNI impacta **encapsulamento, latência, MTU, segurança (policy), observabilidade** e integração com **Cloud Routes/BGP**.
+- Em **managed K8s**, alguns CNIs são **gerenciados** (EKS, GKE, AKS); valide **limitações** por provedor.
+- Plugins de **policy** (Calico, Cilium) implementam NetworkPolicy L3/L4; Cilium adiciona **L7** com eBPF.
+- **IPAM** costuma vir integrado ao CNI (host-local, cluster-pools, etc.), mas pode ser externo.
+
+**🔧 Comandos/manifests:**
+```bash
+# Ver diretórios CNI (Node)
+ls -l /opt/cni/bin
+ls -l /etc/cni/net.d
+
+# Exemplo: instalar CNI (genérico – ajuste ao seu cluster)
+kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+```
+
+**⚖️ Diferenças-chave:**
+- **CNI ≠ CNM (Docker)**: K8s segue **CNI**; Docker Swarm segue **CNM**/libnetwork.
+- **Kubenet vs CNI completo**: kubenet não suporta NetworkPolicy; CNI completo, sim.
+
+**📚 Referências:**
+- Kubernetes – [CNI (Plugins de Rede)](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/)
+- Projeto CNI – [Spec](https://github.com/containernetworking/cni/blob/main/SPEC.md)
+
+---
+
+## 10.3 IPAM (IP Address Management) no K8s
+- **IPAM** aloca endereços a Pods/Interfaces; pode ser **host-local** (por Node), **cluster pool** (global) ou **DHCP**, conforme o plugin.
+- O **kube-controller-manager** pode anunciar **podCIDR** por Node (dependendo do modo/Cloud provider) para os CNIs consumirem.
+- É crítico **planejar CIDRs**: **Pod CIDR** (ex.: 10.244.0.0/16) não deve colidir com redes do datacenter/VPC/VNet e **Service CIDR** (ex.: 10.96.0.0/12).
+- **Service CIDR** define range para **ClusterIP**; não é roteável externamente e costuma trafegar via kube-proxy (iptables/ipvs).
+- Em **dual-stack**, planeje **ranges IPv4 e IPv6** para Pods e Services; verifique se o CNI suporta.
+- **Exaustão de IP** causa falha de criação de Pods; monitore consumo por **Namespace/Node** e aumente pools quando possível.
+- Alguns CNIs (Calico/Cilium) suportam **pools múltiplos**, seleção por **labels**/namespaces, e reservas por **nodes**.
+- **MTU** e encapsulamento (VXLAN/Geneve) impactam fragmentação; ajuste para evitar **path MTU issues**.
+- **NodeLocal NAT** e **egress gateways** podem alterar origem do tráfego (SNAT); atenção a **ACLs** externas.
+- **Reservas** e **exclusões** são úteis para interop com appliances/rotas existentes.
+- Auditoria: validar **routes** por Node, **arp/nd**, e a convergência de **BGP/Cloud Routes** conforme o CNI.
+- **Teste de esgotamento** controlado em ambiente de dev detecta falhas cedo.
+
+**🔧 Comandos úteis:**
+```bash
+# Ver CIDRs de Service e Pod (variável conforme instalação)
+kubectl cluster-info
+kubectl describe node | egrep -i "podCIDR|podCIDRs"
+kubectl get cm -n kube-system kube-proxy -o yaml | grep -i clusterCIDR -n
+
+# Pod de teste + checagem de IP
+kubectl run ipamtest --image=busybox:1.35 --restart=Never -- sleep 3600
+kubectl get pod ipamtest -o wide
+```
+
+**📚 Referências:**
+- Kubernetes – [IPv4/IPv6 Dual-Stack](https://kubernetes.io/docs/concepts/services-networking/dual-stack/)
+- Kubernetes – [Services](https://kubernetes.io/docs/concepts/services-networking/service/)
+- Kubernetes – [Network Plugins (IPAM nos CNIs)](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/)
+
+---
+
+## 10.4 DNS no Kubernetes
+- O cluster fornece DNS interno para **Pods e Services** (padrão: `cluster.local`), resolvido pelo **CoreDNS**.
+- **Services (ClusterIP)** ganham registros **A** do tipo `svc.ns.svc.cluster.local`; **headless** Services (`clusterIP: None`) publicam **A** por Pod.
+- **Pods** ganham **A/AAAA** via headless Service ou registro reverso em alguns setups; para descoberta, prefira Services.
+- **Search domains** no `/etc/resolv.conf` do Pod permitem resolver `my-svc` em `my-svc.my-ns.svc.cluster.local`.
+- **ndots** influencia como nomes são consultados (muitos dots tentam FQDN primeiro, impactando latência).
+- **StubDomains** e **upstreamNameservers** podem ser configurados no ConfigMap do CoreDNS (para resolver domínios externos).
+- **NodeLocal DNSCache** melhora latência e reduz load do CoreDNS (daemonset local escutando em 169.254.20.10, por ex.).
+- Debug: usar imagens como **netshoot** ou **busybox** e ferramentas `dig`, `nslookup`, `getent hosts`.
+- O DNS integra-se aos **Services/EndpointSlices**: mudança de backends não altera o nome – aumenta resiliência.
+- Atenção a **NetworkPolicies** que podem bloquear UDP/TCP 53 entre Pods e CoreDNS.
+- **Split-horizon** e reescritas podem ser feitas com plugins do CoreDNS.
+- Services `ExternalName` criam **CNAME** para nomes externos (sem VIP/Proxy).
+
+**🔧 Exemplos:**
+```bash
+kubectl run dnsutils --image=registry.k8s.io/e2e-test-images/jessie-dnsutils:1.3 --restart=Never -- sleep 3600
+kubectl exec -it dnsutils -- dig A kubernetes.default.svc.cluster.local
+kubectl exec -it dnsutils -- nslookup my-svc.my-ns
+```
+
+**📚 Referências:**
+- Kubernetes – [DNS for Services and Pods](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/)
+- Kubernetes – [Customize DNS](https://kubernetes.io/docs/tasks/administer-cluster/dns-custom-nameservers/)
+- Kubernetes – [NodeLocal DNSCache](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/)
+
+---
+
+## 10.5 CoreDNS no Kubernetes
+- **CoreDNS** roda como **Deployment** em `kube-system` com um **ConfigMap** contendo o **Corefile** (cadeia de plugins).
+- Plugin **`kubernetes`** responde por `*.svc.cluster.local` (ou domínio configurado), lendo Services/Endpoints via API.
+- Plugins comuns: `forward` (encaminhar upstream), `cache`, `rewrite`, `ready`, `health`, `prometheus`, `log`.
+- **Escalabilidade**: ajustar réplicas, `cache` e habilitar **NodeLocal DNSCache**; monitore latência e QPS no Prometheus.
+- **StubDomains**: encaminham domínios específicos a DNS upstream distintos (ex.: corp.local → AD DNS).
+- **rewrite** e **template** permitem flexibilizar respostas (cautela para não quebrar discovery de Services).
+- **Observabilidade**: métricas em `/metrics` e logs detalhados com o plugin `log`.
+- **Resolução externa**: `forward .` para resolvers do cluster/provedor; cuidado com **ndots/search** que podem gerar tentativas excessivas.
+- **Segurança**: considere restringir quem pode editar o ConfigMap do CoreDNS; uma mudança errada derruba o DNS do cluster.
+- **Affinity/Topology**: posicione réplicas em nós distintos para evitar SPOF local.
+- **Teste/rollback**: altere o ConfigMap e monitore; tenha manifestos versionados para rollback rápido.
+- **Compatibilidade**: versões do CoreDNS podem variar por distro/gerenciador (EKS/AKS/GKE).
+
+**🔧 Manifests/Comandos:**
+```bash
+# Ver CoreDNS
+kubectl -n kube-system get deploy,svc cm | grep -i coredns
+kubectl -n kube-system get cm coredns -o yaml
+
+# Exemplo: adicionando stub domain (trecho do Corefile)
+# Corefile (parcial)
+# .:53 {
+#   kubernetes cluster.local in-addr.arpa ip6.arpa {
+#     pods insecure
+#     fallthrough in-addr.arpa ip6.arpa
+#   }
+#   forward corp.local 10.0.0.2 10.0.0.3
+#   forward . /etc/resolv.conf
+#   cache 30
+# }
+```
+
+**📚 Referências:**
+- Kubernetes – [Customize DNS Service](https://kubernetes.io/docs/tasks/administer-cluster/dns-custom-nameservers/)
+- CoreDNS – [Plugins](https://coredns.io/plugins/)
+- Kubernetes – [NodeLocal DNSCache](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/)
+
+---
+
+## 10.6 Ingress (L7 HTTP/HTTPS)
+- **Ingress é um recurso** que define **regras L7** (host/path) para entrada de tráfego em Services do cluster.
+- É necessário um **Ingress Controller** (NGINX, HAProxy, Traefik, ingress-gce, etc.); o recurso sozinho **não** faz nada.
+- **IngressClass** seleciona o controlador; anotações e CRDs variam por implementação (timeouts, rewrites, rate-limit).
+- **TLS** pode ser configurado (terminação no controller) referenciando **Secrets** com certificados.
+- **Canary/blue-green** podem ser feitos com anotações/CRDs do controlador (ex.: nginx ingress canary).
+- **Limitações**: originalmente focado em HTTP/HTTPS; para TCP/UDP use serviços L4 ou CRDs específicos do controller.
+- **Service vs Ingress**: Service expõe Pods; Ingress **roteia** solicitações HTTP(S) para um ou mais Services.
+- **NodePort/LoadBalancer** ainda são usados para **expor** o Ingress Controller ao exterior.
+- Em clusters gerenciados, o controller pode **provisionar** Load Balancers automáticos.
+- Observabilidade: métricas e logs do controller; atenção a **X-Forwarded-* headers**, sticky sessions, mTLS (se suportado).
+- Segurança: WAF, restrições por IP, autenticação/OIDC via auth-url (varia por controller).
+- Para rotas avançadas/multi-protocolos, considere **Gateway API**.
+
+**🔧 Manifesto mínimo:**
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-ing
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  tls:
+    - hosts: [ "app.example.com" ]
+      secretName: app-tls
+  rules:
+    - host: app.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-svc
+                port:
+                  number: 80
+```
+
+**Comandos úteis:**
+```bash
+kubectl get ingress -A
+kubectl describe ingress web-ing
+kubectl logs -n ingress-nginx deploy/ingress-nginx-controller
+```
+
+**📚 Referências:**
+- Kubernetes – [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/)
+- Kubernetes – [IngressClass](https://kubernetes.io/docs/concepts/services-networking/ingress/#ingress-class)
+
+---
+
+## 10.7 Gateway API (Sucessor evolutivo do Ingress)
+- **Gateway API** é um conjunto de APIs (CRDs) pensado para **expressividade, portabilidade e separação de responsabilidades**.
+- Recursos principais: **GatewayClass** (classe do provedor), **Gateway** (data plane/entradas), **HTTPRoute/TCPRoute/UDPRoute/GRPCRoute** (regras).
+- **Multi-tenant**: permite **binding** de rotas a Gateways em **namespaces distintos**, com políticas de aprovação.
+- **Listeners** em Gateway definem **portas, protocolos, TLS**, SNI e políticas; múltiplos **Routes** podem anexar-se a um listener.
+- **Status/Conditions** ricos facilitam troubleshooting e automação (quem aceitou o quê, por quê).
+- Suporta **TLS**, **mTLS**, políticas de **retry**, **time-outs**, **header mods**, **traffic splitting** (conforme controlador).
+- **Ingress vs Gateway API**: Ingress é mais simples e amplamente suportado; Gateway API é **mais rico** e modular.
+- Controladores de referência: **GKE/Gateway**, **Istio**, **Contour/Envoy**, **Kong**, **NGINX** (variando recursos suportados).
+- **Gradual rollout**: é possível migrar rotas HTTP do Ingress para **HTTPRoute** mantendo equivalência.
+- **Políticas adicionais** (RateLimit, Authn/Authz) surgem como **Policy APIs** que estendem rotas/gateways.
+- **Observabilidade**: integra bem com métricas/telemetria (Envoy/Istio) e status condicionais.
+- **Automação**: separa papéis – plataforma cria **Gateway**, times de app gerenciam **Routes**.
+- **Compatibilidade**: verifique a **implementação** do seu provedor – nem tudo é GA em todos os ambientes.
+
+**🔧 Manifesto de exemplo (HTTPRoute + Gateway):**
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: bank-gw
+spec:
+  gatewayClassName: nginx
+  listeners:
+  - name: https
+    protocol: HTTPS
+    port: 443
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - name: bank-tls
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: app-route
+spec:
+  parentRefs:
+  - name: bank-gw
+  hostnames: ["app.example.com"]
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: web-svc
+      port: 80
+```
+
+**Comandos úteis:**
+```bash
+kubectl get gatewayclasses.gateway.networking.k8s.io
+kubectl get gateways,gateway,httproutes -A
+kubectl describe httproute app-route
+```
+
+**📚 Referências:**
+- Kubernetes – [Gateway API (Visão Geral)](https://kubernetes.io/docs/concepts/services-networking/gateway/)
+- Projeto – [Gateway API Docs](https://gateway-api.sigs.k8s.io/)
+- Kubernetes – [Ingress vs Gateway](https://kubernetes.io/docs/concepts/services-networking/gateway/#comparison-with-ingress)
+
+---
+
+### 🧭 Dicas de prova & troubleshooting
+> **Use sempre um Pod de utilidades** (ex.: `nicolaka/netshoot`): `curl`, `dig`, `ss`, `tcpdump` ajudam a diagnosticar DNS, rotas, latência e política.  
+> **Valide objetos** com `kubectl describe` e **eventos** do namespace; inspecione logs do **kube-proxy**, **Ingress/Gateway controllers** e **CoreDNS**.
+
+---
+
+### 📑 Tabela express de comandos úteis
+| Tema | Comandos |
+|------|----------|
+| Pod Net | `kubectl get pods -o wide -A` · `kubectl exec -it <pod> -- ip a` · `ip route` |
+| DNS/CoreDNS | `kubectl -n kube-system get deploy coredns` · `kubectl exec -it dnsutils -- dig ...` |
+| CNI | `ls /opt/cni/bin` · `ls /etc/cni/net.d` · `kubectl get daemonset -A | grep -i cni` |
+| Services | `kubectl get svc -A` · `kubectl describe svc` · `kubectl get endpointslices -A` |
+| Ingress | `kubectl get ingress -A` · `kubectl logs -n ingress-nginx deploy/ingress-nginx-controller` |
+| Gateway API | `kubectl get gateway,httproute -A` · `kubectl describe gateway <name>` |
+
+---
+
+
